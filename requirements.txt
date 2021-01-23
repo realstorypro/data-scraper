@@ -1,0 +1,4 @@
+PyQt5
+PyQt5-sip
+beautifulsoup4
+selenium
