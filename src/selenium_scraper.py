@@ -1,5 +1,9 @@
 import time
+from random import randrange
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
+import json
+import requests
 
 ##
 ## try:
@@ -12,6 +16,8 @@ from selenium import webdriver
 DRIVER_PATH = '/usr/local/bin/chromedriver'
 driver = webdriver.Chrome(executable_path=DRIVER_PATH)
 
+# notifications
+webhook_url = 'https://hooks.slack.com/services/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'
 
 # initial variables
 BASE_URL = 'https://www.crunchbase.com'
@@ -42,9 +48,17 @@ def load_page(route):
             driver.find_element_by_class_name('logo')
             print('protection bypassed')
             bot_protection = False
-        except:
+        except NoSuchElementException:
             print('scraper protection engaged')
+
+            bypass_message = {'text': "The scraping protection activated. Please do a manual bypass."}
+            response = requests.post(
+                webhook_url, data=json.dumps(bypass_message),
+                headers={'Content-Type': 'application/json'}
+            )
+
             time.sleep(60)
+            driver.get(url)
 
 
 def scrape_data(company_name):
@@ -52,6 +66,45 @@ def scrape_data(company_name):
     print_green(f'Checking {company_name} alias {name}')
 
     load_page(f'/organization/{name}')
+
+    # lets wait before we scrape to see if this fixes stale element errors
+    time.sleep(4)
+
+    try:
+        profile_name = driver.find_element_by_css_selector('.profile-name')
+    except NoSuchElementException:
+        print_green('the profile is invalid')
+        with open('../data/error.csv', 'a') as file:
+            file.write('\n' + company_name)
+        return
+
+    # lets get the url first
+    try:
+        company_url = driver.find_element_by_xpath('//profile-section[1]//link-formatter/a')
+    except NoSuchElementException:
+        company_url = ''
+
+    # location second (sometimes its unavailable)
+    try:
+        company_location = driver.find_element_by_xpath('/html/body/chrome/div/mat-sidenav-container/mat-sidenav-content/div/ng-component/entity-v2/page-layout/div/div/div/page-centered-layout[2]/div/row-card/div/div[1]/profile-section/section-card/mat-card/div[2]/div/fields-card/ul/li[1]/label-with-icon/span/field-formatter/identifier-multi-formatter/span')
+    except NoSuchElementException:
+        company_location = ''
+
+    print('located in:', company_location.text, 'with a url:', company_url.text)
+
+    # now lets find people
+    load_page(f'/organization/{name}/people')
+
+    # lets wait before we scrape to see if this fixes stale element errors
+    time.sleep(4)
+    try:
+        names = driver.find_elements_by_xpath('//section-card[1]//identifier-image/following-sibling::div/a')
+    except NoSuchElementException:
+        print_green('no people found')
+        return
+
+    for name in names:
+        print('name is:', name.text)
 
     # load the page in "soup" variable
     #soup = get_page(f'/organization/{name}')
@@ -62,6 +115,12 @@ def scrape_data(company_name):
     ##        file.write('\n' + company_name)
     ##    return
 
+
+# Send a Slack Message
+response = requests.post(
+    webhook_url, data=json.dumps({'text': "Scrape job has begun"}),
+    headers={'Content-Type': 'application/json'}
+)
 
 
 # Going through the csv of company names
@@ -77,3 +136,11 @@ companies = list(dict.fromkeys(companies))
 
 for company in companies:
     scrape_data(company)
+    time.sleep(randrange(10,30))
+
+# Send a Slack Message
+response = requests.post(
+    webhook_url, data=json.dumps({'text': "The scrape job has finished"}),
+    headers={'Content-Type': 'application/json'}
+)
+
