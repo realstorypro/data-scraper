@@ -1,0 +1,8 @@
+keyword: none
+headquarters: united states
+employees: 11 - 500
+revenue: 1m - 50m
+status: active
+ipo: private
+website tech: wordpress
+company tech: pipedrive
